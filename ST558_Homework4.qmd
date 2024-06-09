@@ -1,0 +1,282 @@
+---
+title: "ST558_Homework4"
+format: html
+editor: visual
+---
+
+## Task 1: Read in the data and Modify
+
+We’ll read in the data in two ways:\
+• First, modify the code provided with the download to read in the data from a local file source (your downloaded .csv files) and combine the two data frames. Use local paths as they do in their code.
+
+```{r}
+# Using functions from Base R
+# load the two tables from local files
+mat <- read.table("student+performance/student/student-mat.csv", sep=";", header=TRUE)
+por <- read.table("student+performance/student/student-por.csv", sep=";", header=TRUE)
+# join them using the supplied code (an outer join on several fields)
+dat_via_merge <- merge(x=mat, y=por, by=c("school","sex","age","address","famsize",
+                                          "Pstatus","Medu","Fedu","Mjob","Fjob",
+                                          "reason","nursery","internet"))
+# show the table and clean up
+head(dat_via_merge)
+```
+
+• Second, read in and combine the data using functions from the tidyverse. Use an inner_join() on the variables they used in their code. Do you notice any issues? Make a note of the issue.\
+• Use an inner_join() on all variables other than G1, G2, G3, paid, and absences. Use this form of the combined data in further exercises.
+
+```{r}
+# Using functions from tidyvse
+library(tidyverse)
+# load the two tables from local files
+student_mat <- read_delim("student+performance/student/student-mat.csv",
+                          delim = ";")
+student_por <- read_delim("student+performance/student/student-por.csv",
+                          delim = ";")
+# create the list of joining variables as the complement of those specified to avoid
+inner_join_vars <- colnames(student_mat)[!colnames(student_mat) %in% c("G1","G2","G3","absences","paid")]
+# join them as an inner join
+dat <- inner_join(x = student_mat, y=student_por, by=inner_join_vars, suffix=c("_mat","_por"))
+# show the tibble
+dat
+```
+
+• Next, for the math data, Portuguese, and combined data, choose four categorical variables you are interested in and convert those into factor variables in each tibble (use the same four variables in each). Use the mutate() function to accomplish this.
+
+```{r}
+# use mutate() to convert to factor
+dat <- mutate(dat, across(c(address, reason, internet, higher), as.factor))
+mat <- mutate(mat, across(c(address, reason, internet, higher), as.factor))
+por <- mutate(por, across(c(address, reason, internet, higher), as.factor))
+```
+
+## Task 2: Summarize the Data (Very Basic EDA)
+
+### Categorical variables
+
+• Create a one-way contingency table, a two-way contingency table, and a three-way contingency table for some of the factor variables you created previously. Use table() to accomplish this.\
+– Interpret a number from each resulting table (that is, pick out a value produced and explain what that value means.)
+
+```{r}
+# check data structure
+str(dat)
+# check NA data
+sum_na <- function (col){ sum(is.na(col))}
+dat |> summarize(across(everything(), sum_na))
+# 1-way contingency table
+table("internet at home?"= dat$internet)
+```
+
+The 1-way contingency table shows that the majority of students have internet access available at home.
+
+```{r}
+# 2-way contingency table
+table("internet at home?"= dat$internet, 
+      "address" = dat$address)
+```
+
+The 2-way contingency table shows that urban students are more likely to have internet access at home versus rural students. Also note that rural students make up a small minority of the total students in these data.
+
+```{r}
+# 3-way contingency table
+table("internet at home?"= dat$internet,
+      "address" = dat$address,
+      "want higher ed?"= dat$higher)
+```
+
+The 3-way contingency table shows that the vast majority of students here do want to pursue higher education. Of the 6 students who do not, all do have internet access at home.
+
+• Create a conditional two-way table using table(). That is, condition on one variable’s setting and create a two-way table. Do this using two different methods:\
+– Once, by subsetting the data (say with filter()) and then creating the two-way table.
+
+```{r}
+#Subsetdown to only students who mention the school’s reputation as the reason for taking the class. 
+# 2-way contingency table, pre-filtered for condition
+fil <- filter(dat, reason =="reputation")
+table("internet at home?"= fil$internet,
+      "address"= fil$address)
+```
+
+Within this subset, we see that all the rural students have internet access at home versus 8 of 21 urbanstudents.
+
+– Once, by creating a three-way table and subsetting it
+
+```{r}
+# 3-way contingency table, conditioned by 1 dimension
+tab <- table( "internet at home?"= dat$internet,
+              "address" = dat$address,
+              "why this school?"= dat$reason)
+tab[,,"reputation"]
+```
+
+• Create a two-way contingency table using group_by() and summarize() from dplyr. Then use pivot_wider() to make the result look more like the output from table().
+
+```{r}
+# The above examples used the base R table() function, but we can create similar contingency tablesusing functions from dplyr (the tidyverse). In the table below, we see that rural students are much less likely to use “closeness to home” as the reason for taking the class versus urban students.
+# 2-way contingency table using dplyr
+dat |> 
+  group_by(reason, address) |> 
+  summarize(count = n()) |> 
+  pivot_wider(names_from = address, values_from = count)
+```
+
+• Create a stacked bar graph and a side-by-side bar graph. Give relevant x and y labels, and a title for the plots.
+
+```{r}
+# data counts for plot
+dat_barplot <- dat |> 
+  group_by(reason, address) |> 
+  summarize(count = n())
+# stacked barplot
+ggplot(data=dat_barplot, aes(x=reason, y=count, fill=address)) + 
+  geom_bar(stat="identity") + 
+  xlab("Reason for choosing school") + 
+  ylab("Student Count") + 
+  ggtitle("Reason for choosing school by Address Type") + 
+  scale_fill_discrete(name="Address", labels=c("Rural","Urban"))
+# side-by-side barplot
+ggplot(data=dat_barplot, aes(x=reason, y=count, fill=address)) + 
+  geom_bar(stat="identity", position="dodge") + 
+  xlab("Reason for choosing school") + 
+  ylab("Student Count") + 
+  ggtitle("Reason for choosing school by Address Type") + 
+  scale_fill_discrete(name="Address", labels=c("Rural","Urban"))
+```
+
+### Numeric variables
+
+The numeric variables are age, absences, and the three test grades variables (G1, G2, and G3) from each data set (math and Portuguese).\
+
+• Find measures of center and spread for three of these variables (including at least one G3 variable)
+```{r}
+# unconditioned
+dat |> summarise(across(matches("G[0-9]"), 
+                        list(mean = mean, sd = sd), 
+                        .names ="{.col}.{.fn}"))
+```
+The results show that the mean Portuguese term grades increase slightly over time, the standard deviations of the Math term scores increase (widen) over time.\
+
+– Repeat while subsetting the data in a meaningful way.
+```{r}
+# again, but subset down to only students who want to attend higher ed
+dat |> filter(higher == "yes") |> 
+  summarise(across(matches("G[0-9]"), 
+                   list(mean = mean, sd = sd), 
+                   .names ="{.col}.{.fn}"))
+```
+The results show that the mean grades for students wanting to pursue higher education are slightly higher for all grading terms in both classes.\
+
+• Find measures of center and spread across a single grouping variable for three of these variables (including a G3 variable as one of them)
+```{r}
+# conditioned on address
+dat |> group_by(address) |> 
+  summarise(across(matches("G[0-9]"), 
+                   list(mean = mean, sd = sd), 
+                   .names ="{.col}.{.fn}"))
+```
+
+• Find measures of center and spread across two grouping variables for three of these variables (including a G3 variable as one of them)
+```{r}
+dat |> group_by(address, reason) |> 
+  summarise(across(c(G1_mat, G2_mat, G3_mat), 
+                   list(mean = mean, sd = sd), 
+                   .names ="{.col}.{.fn}"))
+```
+
+• Create a correlation matrix between all of the numeric variables
+```{r}
+library(ggcorrplot)
+dat |> 
+  select(age, ends_with("_mat"), ends_with("_por")) |> 
+  select(-paid_mat, - paid_por) |> 
+  cor() |> 
+  ggcorrplot(hc.order = TRUE, type ="lower", lab =TRUE)
+```
+
+• Create a histogram, kernel density plot, and boxplot for two of the numeric variables across one of the categorical variables (that is, create graphs that can compare the distributions across the groups on the same plot (no faceting here)). Add appropriate labels and titles.
+```{r}
+# histograms for G3_mat and G3_por across levels of address
+ggplot(dat, aes(x=G3_por, fill=address)) + 
+  geom_histogram(alpha=0.3, position ='identity') + 
+  ggtitle("Final Portuguese grades (G3) by Address type") + 
+  xlab("Final Grade")
+ggplot(dat, aes(x=G3_mat, fill=address)) + 
+  geom_histogram(alpha=0.3, position ='identity') + 
+  ggtitle("Final Math grades (G3) by Address type") + 
+  xlab("Final Grade")
+```
+```{r}
+# boxplots for G3_mat and G3_por across levels of address
+ggplot(dat, aes(x=G3_por, fill=address)) + 
+  geom_boxplot() + 
+  ggtitle("Final Portuguese grades (G3) by Address type") + 
+  xlab("Final Grade")
+ggplot(dat, aes(x=G3_mat, fill=address)) + 
+  geom_boxplot() + 
+  ggtitle("Final Math grades (G3) by Address type") + 
+  xlab("Final Grade")
+```
+
+```{r}
+# KDplots for G3_mat and G3_por across levels of address
+ggplot(dat, aes(x=G3_por, fill=address, cut=address)) + 
+  geom_density(alpha=0.3) + 
+  ggtitle("Final Portuguese grades (G3) by Address type") + 
+  xlab("Final Grade")
+ggplot(dat, aes(x=G3_mat, fill=address)) + 
+  geom_density(alpha=0.3) + 
+  ggtitle("Final Math grades (G3) by Address type") + 
+  xlab("Final Grade")
+```
+
+• Create two scatterplots relating a G3 variable to other numeric variables (put G3 on the y-axis). You should jitter the points if they sit on top of each other. Color the points by a categorical variable in each. Add appropriate labels and titles.
+```{r}
+ggplot(dat, aes(x=G1_mat, y=G3_mat, color=address)) + 
+  geom_jitter(alpha=0.6) + 
+  ggtitle("Final Math grades (G3) vs first-term grades (G1) by Address type") + 
+  xlab("First term grade") + 
+  ylab("Final grade")
+
+ggplot(dat, aes(x=G3_por, y=G3_mat, color=address)) + 
+  geom_jitter(alpha=0.6) + 
+  ggtitle("Final Math grades vs final Portuguese grades by Address type") + 
+  xlab("Final Math grade") + 
+  ylab("Final Portuguese grade")
+```
+
+• Repeat the scatter plot step but use faceting to obtain graphs at each setting of another categorical variable.
+```{r}
+ggplot(dat, aes(x=G1_mat, y=G3_mat)) + 
+  geom_jitter(alpha=0.6) + 
+  ggtitle("Final Math grades (G3) vs first-term grades (G1) by Reason type") + 
+  xlab("First term grade") + 
+  ylab("Final grade") + 
+  facet_wrap(~reason)
+
+ggplot(dat, aes(x=G3_por, y=G3_mat)) + 
+  geom_jitter(alpha=0.6) + 
+  ggtitle("Final Math grades vs final Portuguese grades by Reason type") + 
+  xlab("Final Math grade") + 
+  ylab("Final Portuguese grade") + 
+  facet_wrap(~reason)
+```
+
+• Repeat the scatter plot step but use faceting to obtain graphs at each combination of two categorical variables.
+```{r}
+ggplot(dat, aes(x=G1_mat, y=G3_mat)) + 
+  geom_jitter() + 
+  ggtitle("Final Math grades (G3) vs first-term grades (G1)\nby Address and Desire for Higher Education") + 
+  xlab("First term grade") + 
+  ylab("Final grade") + 
+  facet_grid(address ~ higher)
+```
+
+```{r}
+ggplot(dat, aes(x=G3_por, y=G3_mat)) + 
+  geom_jitter() + 
+  ggtitle("Final Math grades vs final Portuguese grades\nby Address and Desire for Higher Education") + 
+  xlab("Final Math grade") + 
+  ylab("Final Portuguese grade") + 
+  facet_grid(address ~ higher)
+```
+
